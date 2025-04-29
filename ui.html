@@ -13,8 +13,24 @@
         </p>
       </header>
 
-      <div class="section">
-        <div class="section-header">
+      <div class="tabs">
+        <button
+          id="tab-variables"
+          class="tab-button tab-button--active"
+          data-tab="variables"
+        >
+          Variables
+        </button>
+        <button id="tab-styles" class="tab-button" data-tab="styles">
+          Styles
+        </button>
+        <button id="tab-frames" class="tab-button" data-tab="frames">
+          Frame Analysis
+        </button>
+      </div>
+
+      <div id="variables-panel" class="tab-panel tab-panel--active">
+        <div class="panel-header">
           <h2 class="type--medium">Variables</h2>
           <button id="extract-variables" class="button button--primary">
             Extract Variables
@@ -23,8 +39,8 @@
         <div id="variables-list" class="tokens-list"></div>
       </div>
 
-      <div class="section">
-        <div class="section-header">
+      <div id="styles-panel" class="tab-panel">
+        <div class="panel-header">
           <h2 class="type--medium">Styles</h2>
           <button id="extract-styles" class="button button--primary">
             Extract Styles
@@ -32,9 +48,86 @@
         </div>
         <div id="styles-list" class="tokens-list"></div>
       </div>
+
+      <div id="frames-panel" class="tab-panel">
+        <div class="panel-header">
+          <h2 class="type--medium">Layer Analysis</h2>
+        </div>
+
+        <div id="selection-info" class="selection-info">
+          <p class="empty-state">No layer selected</p>
+        </div>
+
+        <div class="analyze-button-container">
+          <button id="analyze-button" class="button button--primary">
+            Analyze Selected Layer
+          </button>
+        </div>
+
+        <div id="debug-messages" class="debug-messages">
+          <div class="debug-header">
+            <h4 class="type--small">Debug Messages</h4>
+            <button id="clear-debug" class="button button--small">Clear</button>
+          </div>
+          <div id="debug-log" class="debug-log"></div>
+        </div>
+
+        <div class="frame-preview-container">
+          <div id="selected-node-info" class="selected-node-info">
+            <p class="empty-state">
+              Select any layer in the Layers panel to view details
+            </p>
+          </div>
+          <div id="frame-preview" class="frame-preview">
+            <p class="empty-state">
+              Select any layer in the Layers panel to view preview
+            </p>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="type--small section-title">Styles Used</h3>
+          <div id="frame-styles-list" class="tokens-list">
+            <p class="empty-state">
+              Select any layer in the Layers panel to view styles
+            </p>
+          </div>
+        </div>
+
+        <div class="panel-section">
+          <h3 class="type--small section-title">Variables Used</h3>
+          <div id="frame-variables-list" class="tokens-list">
+            <p class="empty-state">
+              Select any layer in the Layers panel to view variables
+            </p>
+          </div>
+        </div>
+      </div>
     </div>
 
     <script>
+      // Tab switching logic
+      document.querySelectorAll('.tab-button').forEach((button) => {
+        button.addEventListener('click', () => {
+          // Deactivate all tabs and panels
+          document.querySelectorAll('.tab-button').forEach((btn) => {
+            btn.classList.remove('tab-button--active');
+          });
+          document.querySelectorAll('.tab-panel').forEach((panel) => {
+            panel.classList.remove('tab-panel--active');
+          });
+
+          // Activate the clicked tab and corresponding panel
+          button.classList.add('tab-button--active');
+          const tabName = button.getAttribute('data-tab');
+          document
+            .getElementById(`${tabName}-panel`)
+            .classList.add('tab-panel--active');
+
+          console.log(`Switched to tab: ${tabName}`);
+        });
+      });
+
       document.getElementById('extract-variables').onclick = () => {
         parent.postMessage(
           { pluginMessage: { type: 'extract-variables' } },
@@ -46,48 +139,200 @@
         parent.postMessage({ pluginMessage: { type: 'extract-styles' } }, '*');
       };
 
+      // Add debug message handler
+      document.getElementById('clear-debug').onclick = () => {
+        document.getElementById('debug-log').innerHTML = '';
+      };
+
+      // Function to add debug message
+      function addDebugMessage(message) {
+        const debugLog = document.getElementById('debug-log');
+        const messageElement = document.createElement('div');
+        messageElement.className = 'debug-message';
+        const time = new Date().toLocaleTimeString();
+        messageElement.innerHTML = `<span class="debug-time">${time}</span> ${message}`;
+        debugLog.appendChild(messageElement);
+        debugLog.scrollTop = debugLog.scrollHeight;
+      }
+
+      // Handle analyze button click
+      document.getElementById('analyze-button').onclick = () => {
+        console.log('Analyze button clicked');
+        addDebugMessage('Analyze button clicked, sending request to plugin...');
+
+        // Clear previous results
+        document.getElementById('selected-node-info').innerHTML =
+          '<p class="empty-state">Analyzing...</p>';
+        document.getElementById('frame-preview').innerHTML =
+          '<p class="empty-state">Loading preview...</p>';
+        document.getElementById('frame-styles-list').innerHTML =
+          '<p class="empty-state">Loading styles...</p>';
+        document.getElementById('frame-variables-list').innerHTML =
+          '<p class="empty-state">Loading variables...</p>';
+
+        // First, try to ping the plugin to confirm communication
+        parent.postMessage({ pluginMessage: { type: 'ping' } }, '*');
+
+        // Then send analyze request
+        setTimeout(() => {
+          parent.postMessage(
+            { pluginMessage: { type: 'analyze-selection' } },
+            '*'
+          );
+        }, 100);
+      };
+
+      // Keep track of image data that might come separately
+      let currentNodeImage = null;
+      let currentNodeId = null;
+
       // Listen for messages from the plugin code
       window.onmessage = (event) => {
         const message = event.data.pluginMessage;
-        if (message.type === 'variables-data') {
-          const variablesList = document.getElementById('variables-list');
-          variablesList.innerHTML = '';
+        console.log('Received message from plugin:', message?.type, message);
 
-          if (message.variables.length === 0) {
-            variablesList.innerHTML =
-              '<p class="empty-state">No variables found in this document</p>';
-            return;
-          }
+        // Initial checks - if message is null, the plugin might not be connected
+        if (!message) {
+          addDebugMessage(
+            'ERROR: No message received from plugin. Plugin might not be properly loaded.'
+          );
+          return;
+        }
 
-          message.variables.forEach((variable) => {
-            const div = document.createElement('div');
-            div.className = 'token-item';
-            div.innerHTML = `
-            <div class="token-item-header">
-              <span class="token-name">${variable.name}</span>
-              <span class="token-badge">${variable.type}</span>
-            </div>
-            <div class="token-item-details">
-              <span class="token-detail">Collection: ${variable.collectionName}</span>
+        // Handle different message types
+
+        // Plugin loaded notification
+        if (message.type === 'plugin-loaded') {
+          addDebugMessage('Plugin loaded successfully: ' + message.message);
+        }
+
+        // Echo reply - confirms plugin received our message
+        else if (message.type === 'echo-reply') {
+          addDebugMessage(
+            'Plugin confirmed receiving message: ' + message.originalMessage
+          );
+        }
+
+        // Ping/pong test
+        else if (message.type === 'pong') {
+          addDebugMessage('Received pong from plugin - communication working!');
+        }
+
+        // Simple analysis results
+        else if (message.type === 'simple-analysis') {
+          addDebugMessage(
+            `Received analysis for ${message.nodeName} (${message.nodeType})`
+          );
+
+          // Display node info
+          document.getElementById('selected-node-info').innerHTML = `
+            <div class="node-info">
+              <span class="node-name">${message.nodeName || 'Unknown'}</span>
+              <span class="node-type-badge">${
+                message.nodeType || 'Unknown'
+              }</span>
             </div>
           `;
-            variablesList.appendChild(div);
-          });
-        } else if (message.type === 'styles-data') {
-          const stylesList = document.getElementById('styles-list');
-          stylesList.innerHTML = '';
 
-          if (message.styles.length === 0) {
-            stylesList.innerHTML =
-              '<p class="empty-state">No styles found in this document</p>';
-            return;
+          // Display image if available
+          const framePreview = document.getElementById('frame-preview');
+          if (message.hasImage && message.imageData) {
+            addDebugMessage('Image data received, displaying it');
+            framePreview.innerHTML = `<img src="${message.imageData}" alt="Layer preview" class="frame-image">`;
+          } else {
+            addDebugMessage('No image available for this node');
+            framePreview.innerHTML =
+              '<p class="empty-state">No preview available for this layer type</p>';
           }
 
-          message.styles.forEach((style) => {
+          // Since this is simplified version, just show placeholders for styles and variables
+          document.getElementById('frame-styles-list').innerHTML =
+            '<p class="empty-state">Styles detection not available in simple mode</p>';
+          document.getElementById('frame-variables-list').innerHTML =
+            '<p class="empty-state">Variables detection not available in simple mode</p>';
+        }
+
+        // Simple analysis error
+        else if (message.type === 'simple-analysis-error') {
+          addDebugMessage('Analysis error: ' + message.message);
+
+          document.getElementById('selected-node-info').innerHTML = `
+            <div class="node-info">
+              <span class="node-name">Error</span>
+              <span class="node-type-badge error-badge">Failed</span>
+            </div>
+          `;
+
+          const framePreview = document.getElementById('frame-preview');
+          framePreview.innerHTML = `<p class="empty-state error-message">${message.message}</p>`;
+
+          document.getElementById('frame-styles-list').innerHTML =
+            '<p class="empty-state">No styles available</p>';
+          document.getElementById('frame-variables-list').innerHTML =
+            '<p class="empty-state">No variables available</p>';
+        }
+
+        // Selection changed notification
+        else if (
+          message.type === 'selection-changed' ||
+          message.type === 'initial-selection'
+        ) {
+          const eventType =
+            message.type === 'initial-selection'
+              ? 'Initial selection'
+              : 'Selection changed';
+          addDebugMessage(
+            `${eventType}: ${message.selectionCount} items selected`
+          );
+
+          const selectionInfo = document.getElementById('selection-info');
+
+          if (!message.hasSelection) {
+            selectionInfo.innerHTML =
+              '<p class="empty-state">No layer selected</p>';
+            document.getElementById('analyze-button').disabled = true;
+          } else if (message.selectionCount === 1) {
+            selectionInfo.innerHTML = `
+              <div class="current-selection">
+                <span class="selection-label">Currently selected:</span>
+                <div class="selected-item">
+                  <span class="selected-name">1 item</span>
+                  <span class="selected-type">${message.selectionTypes[0]}</span>
+                </div>
+                <span class="selection-hint">Click 'Analyze' to see details</span>
+              </div>
+            `;
+            document.getElementById('analyze-button').disabled = false;
+          } else {
+            selectionInfo.innerHTML = `
+              <p class="empty-state">Multiple layers selected (${message.selectionCount}). Please select only one layer.</p>
+            `;
+            document.getElementById('analyze-button').disabled = true;
+          }
+        }
+
+        // Debug messages
+        else if (message.type === 'debug-message') {
+          addDebugMessage(message.message);
+        }
+
+        // Handle any old message types for backward compatibility
+        else {
+          addDebugMessage(`Received message type: ${message.type}`);
+        }
+      };
+
+      // Helper function to display styles
+      function displayStyles(styles) {
+        const frameStylesList = document.getElementById('frame-styles-list');
+        if (styles && styles.length > 0) {
+          console.log(`Displaying ${styles.length} styles`);
+          frameStylesList.innerHTML = '';
+
+          styles.forEach((style) => {
             const div = document.createElement('div');
             div.className = 'token-item';
 
-            // Different display for color vs text styles
             if (style.type === 'PAINT') {
               let colorPreview = '';
               if (style.hexColor) {
@@ -95,53 +340,74 @@
               }
 
               div.innerHTML = `
-              <div class="token-item-header">
-                ${colorPreview}
-                <span class="token-name">${style.name}</span>
-                <span class="token-badge">Color</span>
-              </div>
-              <div class="token-item-details">
-                ${
-                  style.hexColor
-                    ? `<span class="token-detail">Hex: ${style.hexColor}</span>`
-                    : '<span class="token-detail">Complex paint style</span>'
-                }
-              </div>
-            `;
+                <div class="token-item-header">
+                  ${colorPreview}
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Color</span>
+                </div>
+                <div class="token-item-details">
+                  ${
+                    style.hexColor
+                      ? `<span class="token-detail">Hex: ${style.hexColor}</span>`
+                      : '<span class="token-detail">Complex paint style</span>'
+                  }
+                </div>
+              `;
             } else if (style.type === 'TEXT') {
               div.innerHTML = `
-              <div class="token-item-header">
-                <span class="token-name">${style.name}</span>
-                <span class="token-badge">Typography</span>
-              </div>
-              <div class="token-item-details">
-                <span class="token-detail">Font: ${
-                  style.fontName?.family || 'Unknown'
-                } ${style.fontName?.style || ''}</span>
-                <span class="token-detail">Size: ${
-                  style.fontSize || 'Unknown'
-                }</span>
-              </div>
-            `;
+                <div class="token-item-header">
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Typography</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Font: ${
+                    style.fontName?.family || 'Unknown'
+                  } ${style.fontName?.style || ''}</span>
+                  <span class="token-detail">Size: ${
+                    style.fontSize || 'Unknown'
+                  }</span>
+                </div>
+              `;
             }
 
-            stylesList.appendChild(div);
+            frameStylesList.appendChild(div);
           });
-        } else if (message.type === 'download-file') {
-          // Create a blob and download link
-          const blob = new Blob([message.content], {
-            type: 'application/json',
-          });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = message.filename;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
+        } else {
+          console.log('No styles to display');
+          frameStylesList.innerHTML =
+            '<p class="empty-state">No styles found in this layer</p>';
         }
-      };
+      }
+
+      // Helper function to display variables
+      function displayVariables(variables) {
+        const frameVariablesList = document.getElementById(
+          'frame-variables-list'
+        );
+        if (variables && variables.length > 0) {
+          console.log(`Displaying ${variables.length} variables`);
+          frameVariablesList.innerHTML = '';
+
+          variables.forEach((variable) => {
+            const div = document.createElement('div');
+            div.className = 'token-item';
+            div.innerHTML = `
+              <div class="token-item-header">
+                <span class="token-name">${variable.name}</span>
+                <span class="token-badge">${variable.type}</span>
+              </div>
+              <div class="token-item-details">
+                <span class="token-detail">Collection: ${variable.collectionName}</span>
+              </div>
+            `;
+            frameVariablesList.appendChild(div);
+          });
+        } else {
+          console.log('No variables to display');
+          frameVariablesList.innerHTML =
+            '<p class="empty-state">No variables found in this layer</p>';
+        }
+      }
     </script>
 
     <style>
@@ -242,18 +508,102 @@
         margin-bottom: 24px;
       }
 
-      .section {
-        margin-bottom: 24px;
+      /* Tab system */
+      .tabs {
+        display: flex;
+        margin-bottom: 16px;
+        border-bottom: 1px solid var(--figma-color-border);
+      }
+
+      .tab-button {
+        padding: 8px 16px;
+        background: transparent;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: var(--figma-color-text-secondary);
+        font-size: 14px;
+        font-weight: 500;
+        cursor: pointer;
+        transition: all 0.2s ease;
+      }
+
+      .tab-button:hover {
+        color: var(--figma-color-text);
+      }
+
+      .tab-button--active {
+        color: var(--figma-color-primary);
+        border-bottom-color: var(--figma-color-primary);
+      }
+
+      .tab-panel {
+        display: none;
         padding: 16px;
         background: var(--figma-color-bg-hover);
         border-radius: var(--figma-border-radius);
+        margin-bottom: 16px;
       }
 
-      .section-header {
+      .tab-panel--active {
+        display: block;
+      }
+
+      .panel-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
         margin-bottom: 16px;
+      }
+
+      .panel-section {
+        margin-top: 24px;
+      }
+
+      .section-title {
+        margin-bottom: 12px;
+        font-weight: 500;
+        color: var(--figma-color-text);
+      }
+
+      /* Frame Analysis specific styles */
+      .frame-selector {
+        margin-bottom: 16px;
+      }
+
+      .select-input {
+        width: 100%;
+        padding: 8px 12px;
+        border-radius: var(--figma-border-radius);
+        border: 1px solid var(--figma-color-border);
+        background-color: var(--figma-color-bg);
+        color: var(--figma-color-text);
+        font-size: 14px;
+        margin-top: 4px;
+      }
+
+      .frame-preview-container {
+        margin-bottom: 16px;
+      }
+
+      .frame-preview {
+        width: 100%;
+        min-height: 200px;
+        max-height: 300px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background-color: var(--figma-color-bg);
+        border: 1px solid var(--figma-color-border);
+        border-radius: var(--figma-border-radius);
+        overflow: hidden;
+        margin-top: 8px;
+      }
+
+      .frame-image {
+        max-width: 100%;
+        max-height: 300px;
+        object-fit: contain;
+        display: block;
       }
 
       /* Tokens list and items */
@@ -355,6 +705,147 @@
 
       .button--secondary:active {
         background-color: var(--figma-color-secondary-pressed);
+      }
+
+      /* Frame Analysis specific styles */
+      .selected-node-info {
+        margin-bottom: 12px;
+      }
+
+      .node-info {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 8px;
+        background-color: var(--figma-color-bg);
+        border: 1px solid var(--figma-color-border);
+        border-radius: var(--figma-border-radius);
+      }
+
+      .node-name {
+        font-weight: 500;
+      }
+
+      .node-type-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        font-size: 11px;
+        background: var(--figma-color-primary);
+        color: white;
+        border-radius: 4px;
+      }
+
+      /* Selection info styles */
+      .selection-info {
+        margin-bottom: 16px;
+        padding: 12px;
+        background-color: var(--figma-color-bg-hover);
+        border-radius: var(--figma-border-radius);
+      }
+
+      .current-selection {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .selection-label {
+        font-size: 12px;
+        color: var(--figma-color-text-secondary);
+      }
+
+      .selected-item {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+
+      .selected-name {
+        font-weight: 500;
+        font-size: 14px;
+      }
+
+      .selected-type {
+        font-size: 11px;
+        padding: 2px 6px;
+        background-color: var(--figma-color-bg);
+        border-radius: 4px;
+        color: var(--figma-color-text-secondary);
+      }
+
+      .selection-hint {
+        font-size: 11px;
+        color: var(--figma-color-text-secondary);
+        font-style: italic;
+        margin-top: 4px;
+      }
+
+      .analyze-button-container {
+        margin-bottom: 16px;
+        display: flex;
+        justify-content: center;
+      }
+
+      .error-message {
+        color: var(--figma-color-danger);
+      }
+
+      .analyzing-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        font-size: 11px;
+        background-color: var(--figma-color-warning);
+        color: black;
+        border-radius: 4px;
+        margin-left: 8px;
+      }
+
+      .error-badge {
+        background-color: var(--figma-color-danger);
+        color: white;
+      }
+
+      /* Debug messages */
+      .debug-messages {
+        margin-bottom: 16px;
+        background-color: #f8f8f8;
+        border: 1px solid var(--figma-color-border);
+        border-radius: var(--figma-border-radius);
+        padding: 8px;
+      }
+
+      .debug-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .debug-log {
+        max-height: 120px;
+        overflow-y: auto;
+        font-family: monospace;
+        font-size: 11px;
+        line-height: 1.4;
+        color: #333;
+        background-color: #f0f0f0;
+        border-radius: 4px;
+        padding: 8px;
+      }
+
+      .debug-message {
+        margin-bottom: 4px;
+        word-break: break-word;
+      }
+
+      .debug-time {
+        color: #666;
+        margin-right: 6px;
+      }
+
+      .button--small {
+        padding: 4px 8px;
+        font-size: 11px;
       }
     </style>
   </body>
