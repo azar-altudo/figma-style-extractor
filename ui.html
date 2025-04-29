@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Design Tokens Extractor</title>
+  </head>
+  <body class="figma-dark">
+    <div class="wrapper">
+      <header>
+        <h1 class="type--large">Design Tokens Extractor</h1>
+        <p class="type--small">
+          Extract variables and styles from your Figma document as JSON
+        </p>
+      </header>
+
+      <div class="section">
+        <div class="section-header">
+          <h2 class="type--medium">Variables</h2>
+          <button id="extract-variables" class="button button--primary">
+            Extract Variables
+          </button>
+        </div>
+        <div id="variables-list" class="tokens-list"></div>
+      </div>
+
+      <div class="section">
+        <div class="section-header">
+          <h2 class="type--medium">Styles</h2>
+          <button id="extract-styles" class="button button--primary">
+            Extract Styles
+          </button>
+        </div>
+        <div id="styles-list" class="tokens-list"></div>
+      </div>
+    </div>
+
+    <script>
+      document.getElementById('extract-variables').onclick = () => {
+        parent.postMessage(
+          { pluginMessage: { type: 'extract-variables' } },
+          '*'
+        );
+      };
+
+      document.getElementById('extract-styles').onclick = () => {
+        parent.postMessage({ pluginMessage: { type: 'extract-styles' } }, '*');
+      };
+
+      // Listen for messages from the plugin code
+      window.onmessage = (event) => {
+        const message = event.data.pluginMessage;
+        if (message.type === 'variables-data') {
+          const variablesList = document.getElementById('variables-list');
+          variablesList.innerHTML = '';
+
+          if (message.variables.length === 0) {
+            variablesList.innerHTML =
+              '<p class="empty-state">No variables found in this document</p>';
+            return;
+          }
+
+          message.variables.forEach((variable) => {
+            const div = document.createElement('div');
+            div.className = 'token-item';
+            div.innerHTML = `
+            <div class="token-item-header">
+              <span class="token-name">${variable.name}</span>
+              <span class="token-badge">${variable.type}</span>
+            </div>
+            <div class="token-item-details">
+              <span class="token-detail">Collection: ${variable.collectionName}</span>
+            </div>
+          `;
+            variablesList.appendChild(div);
+          });
+        } else if (message.type === 'styles-data') {
+          const stylesList = document.getElementById('styles-list');
+          stylesList.innerHTML = '';
+
+          if (message.styles.length === 0) {
+            stylesList.innerHTML =
+              '<p class="empty-state">No styles found in this document</p>';
+            return;
+          }
+
+          message.styles.forEach((style) => {
+            const div = document.createElement('div');
+            div.className = 'token-item';
+
+            // Different display for color vs text styles
+            if (style.type === 'PAINT') {
+              let colorPreview = '';
+              if (style.hexColor) {
+                colorPreview = `<span class="color-preview" style="background-color: ${style.hexColor}"></span>`;
+              }
+
+              div.innerHTML = `
+              <div class="token-item-header">
+                ${colorPreview}
+                <span class="token-name">${style.name}</span>
+                <span class="token-badge">Color</span>
+              </div>
+              <div class="token-item-details">
+                ${
+                  style.hexColor
+                    ? `<span class="token-detail">Hex: ${style.hexColor}</span>`
+                    : '<span class="token-detail">Complex paint style</span>'
+                }
+              </div>
+            `;
+            } else if (style.type === 'TEXT') {
+              div.innerHTML = `
+              <div class="token-item-header">
+                <span class="token-name">${style.name}</span>
+                <span class="token-badge">Typography</span>
+              </div>
+              <div class="token-item-details">
+                <span class="token-detail">Font: ${
+                  style.fontName?.family || 'Unknown'
+                } ${style.fontName?.style || ''}</span>
+                <span class="token-detail">Size: ${
+                  style.fontSize || 'Unknown'
+                }</span>
+              </div>
+            `;
+            }
+
+            stylesList.appendChild(div);
+          });
+        } else if (message.type === 'download-file') {
+          // Create a blob and download link
+          const blob = new Blob([message.content], {
+            type: 'application/json',
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = message.filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        }
+      };
+    </script>
+
+    <style>
+      /* Figma design system colors and variables */
+      :root {
+        --figma-color-bg: #ffffff;
+        --figma-color-bg-hover: #f5f5f5;
+        --figma-color-bg-active: #e5e5e5;
+        --figma-color-border: #e5e5e5;
+        --figma-color-border-strong: #d9d9d9;
+        --figma-color-icon: #333333;
+        --figma-color-text: #333333;
+        --figma-color-text-secondary: #7f7f7f;
+        --figma-color-text-disabled: #b3b3b3;
+        --figma-color-primary: #18a0fb;
+        --figma-color-primary-hover: #0d8ce0;
+        --figma-color-primary-pressed: #0670b3;
+        --figma-color-primary-text: #ffffff;
+        --figma-color-secondary: #f5f5f5;
+        --figma-color-secondary-hover: #e5e5e5;
+        --figma-color-secondary-pressed: #d9d9d9;
+        --figma-color-danger: #f24822;
+        --figma-color-danger-hover: #df4320;
+        --figma-color-danger-pressed: #c23b1c;
+        --figma-color-success: #14ae5c;
+        --figma-color-warning: #ffb800;
+        --figma-color-info: #18a0fb;
+
+        --figma-border-radius: 6px;
+        --figma-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      }
+
+      /* Dark mode colors */
+      .figma-dark {
+        --figma-color-bg: #2c2c2c;
+        --figma-color-bg-hover: #3e3e3e;
+        --figma-color-bg-active: #4b4b4b;
+        --figma-color-border: #444444;
+        --figma-color-border-strong: #5f5f5f;
+        --figma-color-icon: #ebebeb;
+        --figma-color-text: #ebebeb;
+        --figma-color-text-secondary: #9a9a9a;
+        --figma-color-text-disabled: #6b6b6b;
+      }
+
+      /* Typography */
+      .type--xlarge {
+        font-size: 20px;
+        font-weight: 500;
+        line-height: 1.4;
+      }
+
+      .type--large {
+        font-size: 16px;
+        font-weight: 500;
+        line-height: 1.5;
+      }
+
+      .type--medium {
+        font-size: 14px;
+        font-weight: 500;
+        line-height: 1.5;
+      }
+
+      .type--small {
+        font-size: 12px;
+        font-weight: 400;
+        line-height: 1.5;
+        color: var(--figma-color-text-secondary);
+      }
+
+      /* General styles */
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+          Roboto, Helvetica, Arial, sans-serif;
+        background-color: var(--figma-color-bg);
+        color: var(--figma-color-text);
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden;
+        font-size: 14px;
+        line-height: 1.5;
+      }
+
+      .wrapper {
+        max-width: 100%;
+        margin: 0;
+        padding: 16px;
+      }
+
+      header {
+        margin-bottom: 24px;
+      }
+
+      .section {
+        margin-bottom: 24px;
+        padding: 16px;
+        background: var(--figma-color-bg-hover);
+        border-radius: var(--figma-border-radius);
+      }
+
+      .section-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 16px;
+      }
+
+      /* Tokens list and items */
+      .tokens-list {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+      }
+
+      .token-item {
+        padding: 10px;
+        background: var(--figma-color-bg);
+        border-radius: var(--figma-border-radius);
+        border: 1px solid var(--figma-color-border);
+      }
+
+      .token-item-header {
+        display: flex;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+
+      .token-name {
+        font-weight: 500;
+        margin-right: 8px;
+      }
+
+      .token-badge {
+        display: inline-block;
+        padding: 2px 6px;
+        font-size: 11px;
+        font-weight: 500;
+        background: var(--figma-color-secondary);
+        color: var(--figma-color-text-secondary);
+        border-radius: 4px;
+      }
+
+      .token-item-details {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+
+      .token-detail {
+        font-size: 12px;
+        color: var(--figma-color-text-secondary);
+      }
+
+      .color-preview {
+        display: inline-block;
+        width: 16px;
+        height: 16px;
+        border-radius: 4px;
+        border: 1px solid var(--figma-color-border-strong);
+        margin-right: 8px;
+      }
+
+      .empty-state {
+        text-align: center;
+        color: var(--figma-color-text-secondary);
+        padding: 16px;
+      }
+
+      /* Buttons */
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border-radius: var(--figma-border-radius);
+        font-size: 13px;
+        font-weight: 500;
+        cursor: pointer;
+        border: none;
+        transition: background-color 0.15s ease-in-out;
+      }
+
+      .button--primary {
+        background-color: var(--figma-color-primary);
+        color: var(--figma-color-primary-text);
+      }
+
+      .button--primary:hover {
+        background-color: var(--figma-color-primary-hover);
+      }
+
+      .button--primary:active {
+        background-color: var(--figma-color-primary-pressed);
+      }
+
+      .button--secondary {
+        background-color: var(--figma-color-secondary);
+        color: var(--figma-color-text);
+      }
+
+      .button--secondary:hover {
+        background-color: var(--figma-color-secondary-hover);
+      }
+
+      .button--secondary:active {
+        background-color: var(--figma-color-secondary-pressed);
+      }
+    </style>
+  </body>
+</html>
