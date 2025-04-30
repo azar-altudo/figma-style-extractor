@@ -316,9 +316,120 @@
           addDebugMessage(message.message);
         }
 
+        // Variables data
+        else if (message.type === 'variables-data') {
+          const variablesList = document.getElementById('variables-list');
+          variablesList.innerHTML = '';
+
+          if (message.variables.length === 0) {
+            variablesList.innerHTML =
+              '<p class="empty-state">No variables found in this document</p>';
+            return;
+          }
+
+          message.variables.forEach((variable) => {
+            const div = document.createElement('div');
+            div.className = 'token-item';
+            div.innerHTML = `
+              <div class="token-item-header">
+                <span class="token-name">${variable.name}</span>
+                <span class="token-badge">${variable.type}</span>
+              </div>
+              <div class="token-item-details">
+                <span class="token-detail">Collection: ${variable.collectionName}</span>
+              </div>
+            `;
+            variablesList.appendChild(div);
+          });
+        }
+
+        // Styles data
+        else if (message.type === 'styles-data') {
+          const stylesList = document.getElementById('styles-list');
+          stylesList.innerHTML = '';
+
+          if (message.styles.length === 0) {
+            stylesList.innerHTML =
+              '<p class="empty-state">No styles found in this document</p>';
+            return;
+          }
+
+          message.styles.forEach((style) => {
+            const div = document.createElement('div');
+            div.className = 'token-item';
+
+            // Different display for color vs text styles
+            if (style.type === 'PAINT') {
+              let colorPreview = '';
+              if (style.hexColor) {
+                colorPreview = `<span class="color-preview" style="background-color: ${style.hexColor}"></span>`;
+              }
+
+              div.innerHTML = `
+                <div class="token-item-header">
+                  ${colorPreview}
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Color</span>
+                </div>
+                <div class="token-item-details">
+                  ${
+                    style.hexColor
+                      ? `<span class="token-detail">Hex: ${style.hexColor}</span>`
+                      : '<span class="token-detail">Complex paint style</span>'
+                  }
+                </div>
+              `;
+            } else if (style.type === 'TEXT') {
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Typography</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Font: ${
+                    style.fontName?.family || 'Unknown'
+                  } ${style.fontName?.style || ''}</span>
+                  <span class="token-detail">Size: ${
+                    style.fontSize || 'Unknown'
+                  }</span>
+                </div>
+              `;
+            }
+
+            stylesList.appendChild(div);
+          });
+        }
+
+        // Handle download file
+        else if (message.type === 'download-file') {
+          addDebugMessage(`Downloading file: ${message.filename}`);
+          // Create a blob and download link
+          const blob = new Blob([message.content], {
+            type: 'application/json',
+          });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = message.filename;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          addDebugMessage(`File download completed`);
+        }
+
+        // Error messages
+        else if (
+          message.type === 'variables-error' ||
+          message.type === 'styles-error' ||
+          message.type === 'extract-error'
+        ) {
+          addDebugMessage(`Error: ${message.message}`);
+        }
+
         // Handle any old message types for backward compatibility
         else {
-          addDebugMessage(`Received message type: ${message.type}`);
+          addDebugMessage(`Received unknown message type: ${message.type}`);
         }
       };
 
