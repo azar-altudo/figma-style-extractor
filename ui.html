@@ -158,7 +158,13 @@
       // Handle analyze button click
       document.getElementById('analyze-button').onclick = () => {
         console.log('Analyze button clicked');
-        addDebugMessage('Analyze button clicked, sending request to plugin...');
+
+        // First clear the debug log
+        document.getElementById('debug-log').innerHTML = '';
+
+        addDebugMessage(
+          'Analyze button clicked, clearing previous results and starting new analysis...'
+        );
 
         // Clear previous results
         document.getElementById('selected-node-info').innerHTML =
@@ -170,16 +176,36 @@
         document.getElementById('frame-variables-list').innerHTML =
           '<p class="empty-state">Loading variables...</p>';
 
-        // First, try to ping the plugin to confirm communication
-        parent.postMessage({ pluginMessage: { type: 'ping' } }, '*');
-
-        // Then send analyze request
+        // Add some visual focus to the debug panel
+        const debugMessages = document.getElementById('debug-messages');
+        debugMessages.style.border = '2px solid var(--figma-color-primary)';
         setTimeout(() => {
-          parent.postMessage(
-            { pluginMessage: { type: 'analyze-selection' } },
-            '*'
-          );
-        }, 100);
+          debugMessages.style.border = '1px solid var(--figma-color-border)';
+        }, 3000);
+
+        // Send analyze request
+        addDebugMessage('Sending analyze-selection message to plugin...');
+
+        // Create a timestamp to track request time
+        window.lastAnalysisRequestTime = Date.now();
+
+        parent.postMessage(
+          { pluginMessage: { type: 'analyze-selection' } },
+          '*'
+        );
+
+        // Start a timer to check if we got a response
+        setTimeout(() => {
+          const elapsed = Date.now() - window.lastAnalysisRequestTime;
+          if (elapsed > 1900) {
+            addDebugMessage(
+              'WARNING: No response received from plugin after 2 seconds'
+            );
+            addDebugMessage(
+              'Check Figma Developer Console (Ctrl+Alt+I or Cmd+Option+I) for errors'
+            );
+          }
+        }, 2000);
       };
 
       // Keep track of image data that might come separately
@@ -191,11 +217,22 @@
         const message = event.data.pluginMessage;
         console.log('Received message from plugin:', message?.type, message);
 
+        // Debug every message received
+        if (message && message.type) {
+          addDebugMessage(`MESSAGE RECEIVED: ${message.type}`);
+        }
+
         // Initial checks - if message is null, the plugin might not be connected
         if (!message) {
           addDebugMessage(
             'ERROR: No message received from plugin. Plugin might not be properly loaded.'
           );
+          return;
+        }
+
+        // Handle debug messages first
+        if (message.type === 'debug-message') {
+          addDebugMessage(`PLUGIN DEBUG: ${message.message}`);
           return;
         }
 
@@ -245,11 +282,25 @@
               '<p class="empty-state">No preview available for this layer type</p>';
           }
 
-          // Since this is simplified version, just show placeholders for styles and variables
-          document.getElementById('frame-styles-list').innerHTML =
-            '<p class="empty-state">Styles detection not available in simple mode</p>';
-          document.getElementById('frame-variables-list').innerHTML =
-            '<p class="empty-state">Variables detection not available in simple mode</p>';
+          // Display styles if available
+          if (message.styles && message.styles.length > 0) {
+            addDebugMessage(`Displaying ${message.styles.length} styles`);
+            displayStyles(message.styles);
+          } else {
+            addDebugMessage('No styles found for this node');
+            document.getElementById('frame-styles-list').innerHTML =
+              '<p class="empty-state">No styles found in this layer</p>';
+          }
+
+          // Display variables if available
+          if (message.variables && message.variables.length > 0) {
+            addDebugMessage(`Displaying ${message.variables.length} variables`);
+            displayVariables(message.variables);
+          } else {
+            addDebugMessage('No variables found for this node');
+            document.getElementById('frame-variables-list').innerHTML =
+              '<p class="empty-state">No variables found in this layer</p>';
+          }
         }
 
         // Simple analysis error
@@ -270,6 +321,26 @@
             '<p class="empty-state">No styles available</p>';
           document.getElementById('frame-variables-list').innerHTML =
             '<p class="empty-state">No variables available</p>';
+        }
+
+        // Plugin errors
+        else if (message.type === 'plugin-error') {
+          addDebugMessage('PLUGIN ERROR: ' + message.error);
+
+          document.getElementById('selected-node-info').innerHTML = `
+            <div class="node-info">
+              <span class="node-name">Plugin Error</span>
+              <span class="node-type-badge error-badge">Error</span>
+            </div>
+          `;
+
+          const framePreview = document.getElementById('frame-preview');
+          framePreview.innerHTML = `<p class="empty-state error-message">An error occurred in the plugin: ${message.error}</p>`;
+
+          document.getElementById('frame-styles-list').innerHTML =
+            '<p class="empty-state">Error processing styles</p>';
+          document.getElementById('frame-variables-list').innerHTML =
+            '<p class="empty-state">Error processing variables</p>';
         }
 
         // Selection changed notification
@@ -309,11 +380,6 @@
             `;
             document.getElementById('analyze-button').disabled = true;
           }
-        }
-
-        // Debug messages
-        else if (message.type === 'debug-message') {
-          addDebugMessage(message.message);
         }
 
         // Variables data
@@ -444,6 +510,7 @@
             const div = document.createElement('div');
             div.className = 'token-item';
 
+            // Different display for different style types
             if (style.type === 'PAINT') {
               let colorPreview = '';
               if (style.hexColor) {
@@ -454,7 +521,7 @@
                 <div class="token-item-header">
                   ${colorPreview}
                   <span class="token-name">${style.name}</span>
-                  <span class="token-badge">Color</span>
+                  <span class="token-badge">Color Style</span>
                 </div>
                 <div class="token-item-details">
                   ${
@@ -462,6 +529,33 @@
                       ? `<span class="token-detail">Hex: ${style.hexColor}</span>`
                       : '<span class="token-detail">Complex paint style</span>'
                   }
+                </div>
+              `;
+            } else if (style.type === 'DIRECT_COLOR') {
+              // Direct color (not a style)
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="color-preview" style="background-color: ${style.hexColor}"></span>
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Color</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Hex: ${style.hexColor}</span>
+                  <span class="token-detail">Opacity: ${style.opacity}</span>
+                  <span class="token-detail">RGB: ${style.rgbValue}</span>
+                </div>
+              `;
+            } else if (style.type === 'DIRECT_STROKE') {
+              // Direct stroke color (not a style)
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="color-preview" style="background-color: ${style.hexColor}"></span>
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">Stroke</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Hex: ${style.hexColor}</span>
+                  <span class="token-detail">Opacity: ${style.opacity}</span>
                 </div>
               `;
             } else if (style.type === 'TEXT') {
@@ -477,6 +571,17 @@
                   <span class="token-detail">Size: ${
                     style.fontSize || 'Unknown'
                   }</span>
+                </div>
+              `;
+            } else {
+              // Other style types
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="token-name">${style.name}</span>
+                  <span class="token-badge">${style.type}</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Type: ${style.type}</span>
                 </div>
               `;
             }
@@ -502,15 +607,43 @@
           variables.forEach((variable) => {
             const div = document.createElement('div');
             div.className = 'token-item';
-            div.innerHTML = `
-              <div class="token-item-header">
-                <span class="token-name">${variable.name}</span>
-                <span class="token-badge">${variable.type}</span>
-              </div>
-              <div class="token-item-details">
-                <span class="token-detail">Collection: ${variable.collectionName}</span>
-              </div>
-            `;
+
+            // Different display based on variable type
+            if (variable.type === 'COLOR') {
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="token-name">${variable.name}</span>
+                  <span class="token-badge">Color Variable</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Collection: ${variable.collectionName}</span>
+                  <span class="token-detail">Property: ${variable.property}</span>
+                </div>
+              `;
+            } else if (variable.type === 'FLOAT') {
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="token-name">${variable.name}</span>
+                  <span class="token-badge">Number Variable</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Collection: ${variable.collectionName}</span>
+                  <span class="token-detail">Property: ${variable.property}</span>
+                </div>
+              `;
+            } else {
+              div.innerHTML = `
+                <div class="token-item-header">
+                  <span class="token-name">${variable.name}</span>
+                  <span class="token-badge">${variable.type}</span>
+                </div>
+                <div class="token-item-details">
+                  <span class="token-detail">Collection: ${variable.collectionName}</span>
+                  <span class="token-detail">Property: ${variable.property}</span>
+                </div>
+              `;
+            }
+
             frameVariablesList.appendChild(div);
           });
         } else {
