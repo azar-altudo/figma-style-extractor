@@ -184,6 +184,9 @@ figma.ui.onmessage = async (msg) => {
     } else if (msg.type === 'extract-styles') {
       sendDebug('Extracting styles...');
       await extractStyles();
+    } else if (msg.type === 'export-frame-analysis') {
+      sendDebug('Exporting frame analysis...');
+      await exportFrameAnalysis();
     } else if (msg.type === 'cancel') {
       sendDebug('Closing plugin...');
       figma.closePlugin();
@@ -859,4 +862,62 @@ async function getNodeVariables(node: SceneNode): Promise<any[]> {
   }
 
   return uniqueVariables;
+}
+
+// Function to export styles and variables for the selected frame/layer
+async function exportFrameAnalysis() {
+  try {
+    const selection = figma.currentPage.selection;
+
+    if (selection.length !== 1) {
+      figma.ui.postMessage({
+        type: 'extract-error',
+        message: 'Please select exactly one layer for export',
+      });
+      return;
+    }
+
+    const node = selection[0];
+    sendDebug(`Exporting analysis for ${node.name} (${node.type})`);
+
+    // Get styles used by the node
+    const stylesInfo = getNodeStyles(node);
+    sendDebug(`Found ${stylesInfo.length} styles used by this node`);
+
+    // Get variables used by the node
+    const variablesInfo = await getNodeVariables(node);
+    sendDebug(`Found ${variablesInfo.length} variables used by this node`);
+
+    // Create JSON data
+    const analysisData = {
+      nodeInfo: {
+        id: node.id,
+        name: node.name,
+        type: node.type,
+      },
+      styles: stylesInfo,
+      variables: variablesInfo,
+    };
+
+    // Create a download link for the JSON file
+    const jsonStr = JSON.stringify(analysisData, null, 2);
+    const filename = `${node.name
+      .replace(/\s+/g, '-')
+      .toLowerCase()}-analysis.json`;
+
+    // Use Figma's file system to save the file
+    figma.ui.postMessage({
+      type: 'download-file',
+      content: jsonStr,
+      filename: filename,
+    });
+
+    sendDebug(`Analysis exported successfully as ${filename}`);
+  } catch (error) {
+    console.error('Error exporting frame analysis:', error);
+    figma.ui.postMessage({
+      type: 'extract-error',
+      message: 'Failed to export frame analysis',
+    });
+  }
 }

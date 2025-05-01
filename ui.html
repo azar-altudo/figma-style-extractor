@@ -52,6 +52,13 @@
       <div id="frames-panel" class="tab-panel">
         <div class="panel-header">
           <h2 class="type--medium">Layer Analysis</h2>
+          <button
+            id="export-frame-analysis"
+            class="button button--primary"
+            disabled
+          >
+            Export Styles & Variables
+          </button>
         </div>
 
         <div id="selection-info" class="selection-info">
@@ -208,6 +215,17 @@
         }, 2000);
       };
 
+      // Add export frame analysis button handler
+      document.getElementById('export-frame-analysis').onclick = () => {
+        console.log('Export frame analysis button clicked');
+        addDebugMessage('Exporting styles and variables for selected layer...');
+
+        parent.postMessage(
+          { pluginMessage: { type: 'export-frame-analysis' } },
+          '*'
+        );
+      };
+
       // Keep track of image data that might come separately
       let currentNodeImage = null;
       let currentNodeId = null;
@@ -362,6 +380,7 @@
             selectionInfo.innerHTML =
               '<p class="empty-state">No layer selected</p>';
             document.getElementById('analyze-button').disabled = true;
+            document.getElementById('export-frame-analysis').disabled = true;
           } else if (message.selectionCount === 1) {
             selectionInfo.innerHTML = `
               <div class="current-selection">
@@ -374,11 +393,13 @@
               </div>
             `;
             document.getElementById('analyze-button').disabled = false;
+            document.getElementById('export-frame-analysis').disabled = false;
           } else {
             selectionInfo.innerHTML = `
               <p class="empty-state">Multiple layers selected (${message.selectionCount}). Please select only one layer.</p>
             `;
             document.getElementById('analyze-button').disabled = true;
+            document.getElementById('export-frame-analysis').disabled = true;
           }
         }
 
@@ -780,6 +801,7 @@
         border-bottom-color: var(--figma-color-primary);
       }
 
+      /* Tab Panels */
       .tab-panel {
         display: none;
         padding: 16px;
@@ -949,6 +971,11 @@
 
       .button--secondary:active {
         background-color: var(--figma-color-secondary-pressed);
+      }
+
+      .button:disabled {
+        opacity: 0.5;
+        cursor: not-allowed;
       }
 
       /* Frame Analysis specific styles */
